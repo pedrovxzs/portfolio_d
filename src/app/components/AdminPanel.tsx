@@ -1,45 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
-import { LogOut, Plus, Trash2, Eye, EyeOff } from "lucide-react";
+import { LogOut, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { portfolioItems, type PortfolioItem } from "../data/portfolioItems";
+import { usePortfolioData } from "../hooks/usePortfolioData";
+import { type PortfolioMedia } from "../data/portfolioItems";
+
+interface FormData {
+  title: string;
+  category: string;
+  description: string;
+  mediaUrl: string;
+  mediaKind: PortfolioMedia["kind"];
+}
 
 export function AdminPanel() {
-  const [items, setItems] = useState<PortfolioItem[]>([]);
-  const [formData, setFormData] = useState({
+  const { items, addItem, removeItem } = usePortfolioData();
+  const [formData, setFormData] = useState<FormData>({
     title: "",
     category: "",
     description: "",
     mediaUrl: "",
-    mediaKind: "image" as const,
+    mediaKind: "image",
   });
   const [showForm, setShowForm] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const { logout } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Carrega items do localStorage
-    const saved = localStorage.getItem("portfolio_items");
-    if (saved) {
-      try {
-        setItems(JSON.parse(saved));
-      } catch {
-        setItems(portfolioItems);
-      }
-    } else {
-      setItems(portfolioItems);
-    }
-  }, []);
+  // Limpa mensagem de feedback após 3 segundos
+  const showFeedback = (type: "success" | "error", text: string) => {
+    setFeedbackMessage({ type, text });
+    setTimeout(() => setFeedbackMessage(null), 3000);
+  };
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.category || !formData.mediaUrl) {
-      alert("Preencha todos os campos!");
+      showFeedback("error", "Preencha todos os campos obrigatórios!");
       return;
     }
 
-    const newItem: PortfolioItem = {
-      id: Math.max(...items.map((i) => i.id), 0) + 1,
+    const result = addItem({
       title: formData.title,
       category: formData.category,
       description: formData.description,
@@ -50,28 +54,31 @@ export function AdminPanel() {
           src: formData.mediaUrl,
         },
       },
-    };
-
-    const updatedItems = [...items, newItem];
-    setItems(updatedItems);
-    localStorage.setItem("portfolio_items", JSON.stringify(updatedItems));
-
-    setFormData({
-      title: "",
-      category: "",
-      description: "",
-      mediaUrl: "",
-      mediaKind: "image",
     });
-    setShowForm(false);
-    alert("Item adicionado com sucesso!");
+
+    if (result.success) {
+      setFormData({
+        title: "",
+        category: "",
+        description: "",
+        mediaUrl: "",
+        mediaKind: "image",
+      });
+      setShowForm(false);
+      showFeedback("success", "Item adicionado com sucesso!");
+    } else {
+      showFeedback("error", "Erro ao adicionar item. Verifique os dados e tente novamente.");
+    }
   };
 
   const handleDeleteItem = (id: number) => {
     if (confirm("Tem certeza que deseja deletar este item?")) {
-      const updatedItems = items.filter((item) => item.id !== id);
-      setItems(updatedItems);
-      localStorage.setItem("portfolio_items", JSON.stringify(updatedItems));
+      const success = removeItem(id);
+      if (success) {
+        showFeedback("success", "Item removido com sucesso!");
+      } else {
+        showFeedback("error", "Erro ao remover item.");
+      }
     }
   };
 
@@ -83,6 +90,19 @@ export function AdminPanel() {
   return (
     <div className="min-h-screen bg-muted">
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Feedback Message */}
+        {feedbackMessage && (
+          <div
+            className={`mb-6 p-4 rounded-lg ${
+              feedbackMessage.type === "success"
+                ? "bg-green-100 border border-green-400 text-green-800"
+                : "bg-red-100 border border-red-400 text-red-800"
+            }`}
+          >
+            {feedbackMessage.text}
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
