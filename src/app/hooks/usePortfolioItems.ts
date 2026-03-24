@@ -1,20 +1,12 @@
-import { useState, useEffect } from "react";
-import { portfolioItems as defaultItems, type PortfolioItem } from "../data/portfolioItems";
+import { usePortfolioContext } from "../context/PortfolioContext";
 
+/**
+ * Hook que retorna os itens do portfolio
+ * Sincroniza automaticamente com mudanças de outras abas/windows
+ * @deprecated Use usePortfolioData() instead for full functionality
+ * Mantido para compatibilidade com código existente
+ */
 export function usePortfolioItems() {
-  const [items, setItems] = useState<PortfolioItem[]>(defaultItems);
-
-  useEffect(() => {
-    // Tenta carregar do localStorage
-    const saved = localStorage.getItem("portfolio_items");
-    if (saved) {
-      try {
-        setItems(JSON.parse(saved));
-      } catch {
-        setItems(defaultItems);
-      }
-    }
-  }, []);
-
+  const { items } = usePortfolioContext();
   return items;
 }
