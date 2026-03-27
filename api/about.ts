@@ -2,8 +2,6 @@ import { neon } from "@neondatabase/serverless";
 
 const allowCors = (fn: (req: Request) => Promise<Response>) => {
   return async (req: Request) => {
-    const response = await fn(req);
-    
     const corsHeaders = {
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Allow-Origin": "*",
@@ -18,6 +16,8 @@ const allowCors = (fn: (req: Request) => Promise<Response>) => {
         headers: corsHeaders,
       });
     }
+
+    const response = await fn(req);
 
     // Add CORS headers to response
     const newResponse = new Response(response.body, response);
@@ -42,9 +42,20 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const sql = neon(POSTGRES_URL);
 
+    await sql`CREATE TABLE IF NOT EXISTS about_content (
+      id INTEGER PRIMARY KEY,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`;
+
+    // Garante um único registro para leitura/gravação rápida e previsível.
+    await sql`INSERT INTO about_content (id, content)
+      VALUES (1, '')
+      ON CONFLICT (id) DO NOTHING`;
+
     if (req.method === "GET") {
-      // Fetch about content
-      const result = await sql`SELECT content, updated_at FROM about_content LIMIT 1`;
+      const result = await sql`SELECT content, updated_at FROM about_content WHERE id = 1 LIMIT 1`;
 
       if (result && result.length > 0) {
         return new Response(JSON.stringify(result[0]), {
@@ -71,38 +82,23 @@ const handler = async (req: Request): Promise<Response> => {
         });
       }
 
-      // Check if table exists and has data
-      const checkResult = await sql`SELECT id FROM about_content LIMIT 1`;
+      const updateResult = await sql`
+        UPDATE about_content
+        SET content = ${content.trim()}, updated_at = NOW()
+        WHERE id = 1
+        RETURNING id, content, updated_at
+      `;
 
-      if (checkResult && checkResult.length > 0) {
-        // Update existing record
-        const updateResult = await sql`UPDATE about_content SET content = ${content}, updated_at = NOW() RETURNING id, content, updated_at`;
-
-        return new Response(
-          JSON.stringify({
-            message: "Content updated successfully",
-            data: updateResult[0],
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      } else {
-        // Insert new record if none exists
-        const insertResult = await sql`INSERT INTO about_content (content, updated_at) VALUES (${content}, NOW()) RETURNING id, content, updated_at`;
-
-        return new Response(
-          JSON.stringify({
-            message: "Content created successfully",
-            data: insertResult[0],
-          }),
-          {
-            status: 201,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
+      return new Response(
+        JSON.stringify({
+          message: "Content updated successfully",
+          data: updateResult[0],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
@@ -111,50 +107,6 @@ const handler = async (req: Request): Promise<Response> => {
     });
   } catch (error: any) {
     console.error("API Error:", error);
-
-    // Handle table not exists error
-    if (error.message && error.message.includes("does not exist")) {
-      // Try to create the table
-      try {
-        const sql = neon(POSTGRES_URL);
-        await sql`CREATE TABLE IF NOT EXISTS about_content (
-          id SERIAL PRIMARY KEY,
-          content TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW()
-        )`;
-
-        // If this is a PUT request, insert the content
-        if (req.method === "PUT") {
-          const body = await req.json() as { content?: string };
-          const { content } = body;
-          const insertResult = await sql`INSERT INTO about_content (content, updated_at) VALUES (${content}, NOW()) RETURNING id, content, updated_at`;
-
-          return new Response(
-            JSON.stringify({
-              message: "Table created and content inserted successfully",
-              data: insertResult[0],
-            }),
-            {
-              status: 201,
-              headers: { "Content-Type": "application/json" },
-            }
-          );
-        }
-
-        // If GET, return empty
-        return new Response(JSON.stringify({ content: "", updated_at: null }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (createError) {
-        console.error("Table creation error:", createError);
-        return new Response(JSON.stringify({ error: "Failed to create table" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
 
     return new Response(
       JSON.stringify({

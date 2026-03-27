@@ -134,19 +134,30 @@ export function AdminPanel() {
 
     setAboutLoading(true);
     try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 20000);
+
       const response = await fetch("/api/about", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ content: aboutContent }),
       });
+
+      window.clearTimeout(timeout);
 
       if (response.ok) {
         showFeedback("success", "About Me atualizado com sucesso!");
       } else {
-        showFeedback("error", "Erro ao atualizar About Me");
+        const errorData = (await response.json().catch(() => null)) as { error?: string; details?: string } | null;
+        showFeedback("error", errorData?.error || "Erro ao atualizar About Me");
       }
     } catch (error) {
-      showFeedback("error", "Erro ao salvar About Me");
+      if (error instanceof DOMException && error.name === "AbortError") {
+        showFeedback("error", "Timeout ao salvar Sobre Mim. Tente novamente.");
+      } else {
+        showFeedback("error", "Erro ao salvar About Me");
+      }
     } finally {
       setAboutLoading(false);
     }
