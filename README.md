@@ -26,10 +26,11 @@ A modern, fully-featured portfolio website built with **Figma AI** for design fo
 ### Admin Features
 - 🔐 Secure password-protected panel
 - ➕ Add images/videos/audio easily
+- ✏️ Edit project metadata (title, description, category, technologies)
 - 🗑️ Delete management
-- 💾 Persistent localStorage storage
+- ☁️ Cloud persistence in Postgres (Neon via Vercel integration)
 - 🎯 Category organization
-- 📝 Item metadata (title, description)
+- 📝 Item metadata (title, description, tags/technologies)
 
 ---
 
@@ -62,9 +63,9 @@ npm run dev
 
 ### Add Items
 1. Click "Adicionar Item"
-2. Fill Title, Category, Description
+2. Fill Title, Category, Description, and Technologies
 3. Select Media Type (Image, Video, or Audio)
-4. Paste media URL
+4. Upload media file to Vercel Blob (URL is filled automatically)
 5. Click "Adicionar Item"
 
 ### Change Password

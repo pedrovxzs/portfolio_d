@@ -300,6 +300,18 @@ export function Portfolio() {
                 <p className="text-muted-foreground text-sm">
                   {project.description}
                 </p>
+                {project.technologies && project.technologies.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {project.technologies.map((tech) => (
+                      <span
+                        key={`${project.id}-${tech}`}
+                        className="inline-block px-2 py-1 text-xs rounded-md bg-primary/10 text-primary"
+                      >
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -377,6 +389,18 @@ export function Portfolio() {
                 <p className="text-sm text-white/80 mt-2">
                   {activeItem.description}
                 </p>
+                {activeItem.technologies && activeItem.technologies.length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                    {activeItem.technologies.map((tech) => (
+                      <span
+                        key={`${activeItem.id}-${tech}`}
+                        className="inline-block px-2 py-1 rounded-md bg-white/15 text-white text-xs"
+                      >
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <p className="text-xs text-white/60 mt-3">
                   {(activeItemIndex ?? 0) + 1} de {filteredItems.length}
                 </p>
