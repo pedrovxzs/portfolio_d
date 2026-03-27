@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { LogOut, Plus, Trash2, Upload, Check, AlertCircle, X, FileText } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -23,6 +23,8 @@ interface BulkFileUpload {
   error: string | null;
   url: string | null;
   syncedToPortfolio: boolean;
+  category: string;
+  selected: boolean;
 }
 
 export function AdminPanel() {
@@ -45,6 +47,8 @@ export function AdminPanel() {
   const [aboutContent, setAboutContent] = useState("");
   const [aboutLoading, setAboutLoading] = useState(false);
   const [bulkFiles, setBulkFiles] = useState<BulkFileUpload[]>([]);
+  const [batchCategory, setBatchCategory] = useState("Upload em lote");
+  const [queueView, setQueueView] = useState<"list" | "grid">("list");
   const [activeTab, setActiveTab] = useState<"portfolio" | "about" | "bulk">("portfolio");
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -59,7 +63,33 @@ export function AdminPanel() {
     return filename
       .replace(/\.[^/.]+$/, "")
       .replace(/[-_]+/g, " ")
-      .trim() || "Item sem título";
+      .trim() || "Item sem t├¡tulo";
+  };
+
+  const categoryOptions = useMemo(() => {
+    const existing = Array.from(new Set(items.map((item) => item.category))).filter(Boolean);
+    return ["Upload em lote", ...existing.filter((category) => category !== "Upload em lote")];
+  }, [items]);
+
+  const selectedBulkCount = useMemo(
+    () => bulkFiles.filter((file) => file.selected).length,
+    [bulkFiles]
+  );
+
+  const addFilesToQueue = (files: File[]) => {
+    const newFiles: BulkFileUpload[] = files.map((file) => ({
+      id: `${Date.now()}-${Math.random()}`,
+      file,
+      progress: 0,
+      loading: false,
+      error: null,
+      url: null,
+      syncedToPortfolio: false,
+      category: batchCategory || "Upload em lote",
+      selected: false,
+    }));
+
+    setBulkFiles((prev) => [...prev, ...newFiles]);
   };
 
   // About Me handlers (defined before useEffect)
@@ -120,7 +150,7 @@ export function AdminPanel() {
     setShowForm(false);
   };
 
-  // Limpa mensagem de feedback após 3 segundos
+  // Limpa mensagem de feedback ap├│s 3 segundos
   const showFeedback = (type: "success" | "error", text: string) => {
     setFeedbackMessage({ type, text });
     setTimeout(() => setFeedbackMessage(null), 3000);
@@ -128,7 +158,7 @@ export function AdminPanel() {
 
   const handleSaveAbout = async () => {
     if (!aboutContent.trim()) {
-      showFeedback("error", "Conteúdo não pode estar vazio");
+      showFeedback("error", "Conte├║do n├úo pode estar vazio");
       return;
     }
 
@@ -171,16 +201,53 @@ export function AdminPanel() {
   // Bulk Media handlers
   const handleBulkFilesSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const newFiles: BulkFileUpload[] = files.map((file) => ({
-      id: `${Date.now()}-${Math.random()}`,
-      file,
-      progress: 0,
-      loading: false,
-      error: null,
-      url: null,
-      syncedToPortfolio: false,
-    }));
-    setBulkFiles((prev) => [...prev, ...newFiles]);
+    addFilesToQueue(files);
+    e.target.value = "";
+  };
+
+  const handleBulkDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length > 0) {
+      addFilesToQueue(files);
+    }
+  };
+
+  const handleBulkDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+  };
+
+  const toggleBulkSelection = (id: string) => {
+    setBulkFiles((prev) =>
+      prev.map((file) =>
+        file.id === id ? { ...file, selected: !file.selected } : file
+      )
+    );
+  };
+
+  const selectAllPendingBulkFiles = () => {
+    setBulkFiles((prev) =>
+      prev.map((file) => ({ ...file, selected: !file.url }))
+    );
+  };
+
+  const clearBulkSelection = () => {
+    setBulkFiles((prev) => prev.map((file) => ({ ...file, selected: false })));
+  };
+
+  const applyCategoryToSelected = () => {
+    if (!batchCategory.trim()) {
+      showFeedback("error", "Escolha uma categoria para aplicar");
+      return;
+    }
+
+    setBulkFiles((prev) =>
+      prev.map((file) =>
+        file.selected ? { ...file, category: batchCategory.trim() } : file
+      )
+    );
+
+    showFeedback("success", "Categoria aplicada aos itens selecionados");
   };
 
   const removeBulkFile = (id: string) => {
@@ -195,6 +262,7 @@ export function AdminPanel() {
       "image/gif",
       "video/mp4",
       "video/webm",
+      "video/quicktime",
       "audio/mpeg",
       "audio/wav",
     ];
@@ -207,7 +275,7 @@ export function AdminPanel() {
           setBulkFiles((prev) =>
             prev.map((f) =>
               f.id === fileState.id
-                ? { ...f, error: `Tipo não suportado: ${fileState.file.type}` }
+                ? { ...f, error: `Tipo n├úo suportado: ${fileState.file.type}` }
                 : f
             )
           );
@@ -219,7 +287,7 @@ export function AdminPanel() {
           setBulkFiles((prev) =>
             prev.map((f) =>
               f.id === fileState.id
-                ? { ...f, error: "Arquivo muito grande (máx. 100MB)" }
+                ? { ...f, error: "Arquivo muito grande (m├íx. 100MB)" }
                 : f
             )
           );
@@ -250,7 +318,11 @@ export function AdminPanel() {
               const uploadResponse = await fetch("/api/upload", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ file: base64Data, filename }),
+                body: JSON.stringify({
+                  file: base64Data,
+                  filename,
+                  contentType: fileState.file.type,
+                }),
               });
 
               if (!uploadResponse.ok) {
@@ -263,7 +335,7 @@ export function AdminPanel() {
               const baseTitle = formatTitleFromFilename(fileState.file.name);
               const primaryCreate = await addItem({
                 title: baseTitle,
-                category: "Upload em lote",
+                category: fileState.category,
                 description: "Item criado automaticamente via upload em lote.",
                 media: {
                   kind: mediaKind,
@@ -279,7 +351,7 @@ export function AdminPanel() {
                 const fallbackTitle = `${baseTitle} ${Date.now()}`;
                 const fallbackCreate = await addItem({
                   title: fallbackTitle,
-                  category: "Upload em lote",
+                  category: fileState.category,
                   description: "Item criado automaticamente via upload em lote.",
                   media: {
                     kind: mediaKind,
@@ -293,7 +365,7 @@ export function AdminPanel() {
               }
 
               if (!createdInPortfolio) {
-                throw new Error("Arquivo enviado, mas falhou ao criar item no portfólio");
+                throw new Error("Arquivo enviado, mas falhou ao criar item no portf├│lio");
               }
 
               setBulkFiles((prev) =>
@@ -306,6 +378,7 @@ export function AdminPanel() {
                         loading: false,
                         error: null,
                         syncedToPortfolio: true,
+                        selected: false,
                       }
                     : f
                 )
@@ -353,13 +426,13 @@ export function AdminPanel() {
       
       const uploadedUrl = await uploadFile(file);
       if (!uploadedUrl) {
-        throw new Error("Upload não retornou URL válida");
+        throw new Error("Upload n├úo retornou URL v├ílida");
       }
 
       setFormData((prev) => ({
         ...prev,
         mediaUrl: uploadedUrl,
-        mediaFile: null, // Limpa após sucesso
+        mediaFile: null, // Limpa ap├│s sucesso
       }));
       showFeedback("success", "Arquivo enviado com sucesso!");
     } catch (error) {
@@ -371,7 +444,7 @@ export function AdminPanel() {
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.category || !formData.mediaUrl) {
-      showFeedback("error", "Preencha todos os campos obrigatórios!");
+      showFeedback("error", "Preencha todos os campos obrigat├│rios!");
       return;
     }
 
@@ -400,12 +473,12 @@ export function AdminPanel() {
     e.preventDefault();
 
     if (editingId === null) {
-      showFeedback("error", "Selecione um item para edição.");
+      showFeedback("error", "Selecione um item para edi├º├úo.");
       return;
     }
 
     if (!formData.title || !formData.category || !formData.mediaUrl) {
-      showFeedback("error", "Preencha todos os campos obrigatórios!");
+      showFeedback("error", "Preencha todos os campos obrigat├│rios!");
       return;
     }
 
@@ -521,7 +594,7 @@ export function AdminPanel() {
           </button>
         </div>
 
-        {/* Botão Adicionar */}
+        {/* Bot├úo Adicionar */}
         {activeTab === "portfolio" && (
           <button
             onClick={() => {
@@ -538,7 +611,7 @@ export function AdminPanel() {
           </button>
         )}
 
-        {/* Formulário */}
+        {/* Formul├írio */}
         {showForm && activeTab === "portfolio" && (
           <div className="bg-white rounded-2xl p-8 mb-8 shadow-lg">
             <h2 className="text-2xl font-bold text-foreground mb-6">
@@ -551,7 +624,7 @@ export function AdminPanel() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Título
+                    T├¡tulo
                   </label>
                   <input
                     type="text"
@@ -581,7 +654,7 @@ export function AdminPanel() {
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Tipo de Mídia
+                    Tipo de M├¡dia
                   </label>
                   <select
                     value={formData.mediaKind}
@@ -594,20 +667,20 @@ export function AdminPanel() {
                     className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary"
                   >
                     <option value="image">Imagem</option>
-                    <option value="video">Vídeo</option>
-                    <option value="audio">Áudio</option>
+                    <option value="video">V├¡deo</option>
+                    <option value="audio">├üudio</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Arquivo de Mídia (Imagem/Vídeo)
+                    Arquivo de M├¡dia (Imagem/V├¡deo)
                   </label>
                   <div className="relative">
                     <input
                       type="file"
                       onChange={handleFileChange}
-                      accept="image/*,video/*"
+                      accept="image/*,video/*,.mov"
                       disabled={uploading}
                       className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-primary cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
                     />
@@ -631,14 +704,14 @@ export function AdminPanel() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-2">
-                    Formatos suportados: JPG, PNG, WebP (imagens) | MP4, WebM (vídeos) | Máximo 100MB
+                    Formatos suportados: JPG, PNG, WebP (imagens) | MP4, WebM, MOV (v├¡deos) | M├íximo 100MB
                   </p>
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
-                  Descrição
+                  Descri├º├úo
                 </label>
                 <textarea
                   value={formData.description}
@@ -655,7 +728,7 @@ export function AdminPanel() {
                 type="submit"
                 className="w-full px-4 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
               >
-                {editingId === null ? "Adicionar Item" : "Salvar Alterações"}
+                {editingId === null ? "Adicionar Item" : "Salvar Altera├º├Áes"}
               </button>
             </form>
           </div>
@@ -732,14 +805,14 @@ export function AdminPanel() {
               <div className="space-y-4">
                 <div>
                   <label htmlFor="aboutContent" className="block text-sm font-medium text-foreground mb-2">
-                    Texto sobre você
+                    Texto sobre voc├¬
                   </label>
                   <textarea
                     id="aboutContent"
                     value={aboutContent}
                     onChange={(e) => setAboutContent(e.target.value)}
                     rows={10}
-                    placeholder="Escreva um texto interessante sobre você, seu background, habilidades e objetivos..."
+                    placeholder="Escreva um texto interessante sobre voc├¬, seu background, habilidades e objetivos..."
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none font-normal"
                   />
                   <p className="text-xs text-muted-foreground mt-2">
@@ -777,25 +850,27 @@ export function AdminPanel() {
               {/* File Input */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-3">
-                  Selecione múltiplos arquivos
+                  Selecione m├║ltiplos arquivos
                 </label>
                 <div className="relative">
                   <input
                     type="file"
                     multiple
-                    accept="image/*,video/*"
+                    accept="image/*,video/*,.mov"
                     onChange={handleBulkFilesSelect}
                     className="hidden"
                     id="bulkFileInput"
                   />
                   <label
                     htmlFor="bulkFileInput"
+                    onDrop={handleBulkDrop}
+                    onDragOver={handleBulkDragOver}
                     className="flex items-center justify-center w-full px-6 py-8 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-primary hover:bg-blue-50 transition-colors"
                   >
                     <div className="text-center">
                       <FileText size={32} className="mx-auto text-muted-foreground mb-2" />
                       <p className="font-medium text-foreground">Arraste arquivos aqui ou clique</p>
-                      <p className="text-sm text-muted-foreground mt-1">Imagens e vídeos suportados</p>
+                      <p className="text-sm text-muted-foreground mt-1">Imagens e v├¡deos suportados (MP4, WebM, MOV)</p>
                     </div>
                   </label>
                 </div>
@@ -804,67 +879,148 @@ export function AdminPanel() {
               {/* Files List */}
               {bulkFiles.length > 0 && (
                 <div className="space-y-3">
-                  <h3 className="font-semibold text-foreground">
-                    {bulkFiles.length} arquivo{bulkFiles.length !== 1 ? 's' : ''} selecionado{bulkFiles.length !== 1 ? 's' : ''}
-                  </h3>
-                  
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <h3 className="font-semibold text-foreground">
+                      {bulkFiles.length} arquivo{bulkFiles.length !== 1 ? "s" : ""} na fila
+                    </h3>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setQueueView("list")}
+                        className={`px-3 py-1 rounded-md text-sm ${
+                          queueView === "list"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-gray-100 text-foreground"
+                        }`}
+                      >
+                        Lista
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQueueView("grid")}
+                        className={`px-3 py-1 rounded-md text-sm ${
+                          queueView === "grid"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-gray-100 text-foreground"
+                        }`}
+                      >
+                        Grid
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <button
+                        type="button"
+                        onClick={selectAllPendingBulkFiles}
+                        className="px-3 py-1.5 rounded-md bg-white border border-gray-300 text-sm"
+                      >
+                        Selecionar pendentes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearBulkSelection}
+                        className="px-3 py-1.5 rounded-md bg-white border border-gray-300 text-sm"
+                      >
+                        Limpar selecao
+                      </button>
+                      <span className="text-sm text-muted-foreground">
+                        {selectedBulkCount} selecionado{selectedBulkCount !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                      <select
+                        value={batchCategory}
+                        onChange={(e) => setBatchCategory(e.target.value)}
+                        className="px-3 py-2 rounded-md border border-gray-300 bg-white text-sm"
+                      >
+                        {categoryOptions.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={applyCategoryToSelected}
+                        disabled={selectedBulkCount === 0}
+                        className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Aplicar categoria aos selecionados
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`${queueView === "grid" ? "grid grid-cols-1 md:grid-cols-2 gap-3" : "space-y-3"} max-h-96 overflow-y-auto`}>
                     {bulkFiles.map((file) => (
                       <div key={file.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <div className="flex items-start justify-between gap-4 mb-2">
-                          <div className="flex-1">
-                            <p className="font-medium text-foreground truncate">{file.file.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {(file.file.size / 1024 / 1024).toFixed(2)} MB
-                            </p>
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={file.selected}
+                              onChange={() => toggleBulkSelection(file.id)}
+                              className="mt-1 h-4 w-4"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-foreground truncate">{file.file.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {(file.file.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Categoria: <span className="font-medium text-foreground">{file.category}</span>
+                              </p>
+                            </div>
                           </div>
                           
-                          {/* Status Badge */}
-                          {file.syncedToPortfolio && (
-                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
-                              Publicado
-                            </span>
-                          )}
-                          {!file.syncedToPortfolio && file.url && (
-                            <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
-                              Só Blob
-                            </span>
-                          )}
-                          {file.error && !file.loading && (
-                            <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">
-                              ✕ Erro
-                            </span>
-                          )}
-                          {file.loading && (
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
-                              ⏳ Enviando
-                            </span>
-                          )}
+                          <div className="flex flex-col gap-1 items-end">
+                            {file.syncedToPortfolio && (
+                              <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                                Publicado
+                              </span>
+                            )}
+                            {!file.syncedToPortfolio && file.url && (
+                              <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                                So Blob
+                              </span>
+                            )}
+                            {file.error && !file.loading && (
+                              <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">
+                                Erro
+                              </span>
+                            )}
+                            {file.loading && (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                                Enviando
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        {/* Progress Bar */}
-                        {file.loading && (
-                          <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
-                            <div
-                              className="bg-primary h-2 rounded-full transition-all"
-                              style={{ width: `${file.progress}%` }}
-                            />
-                          </div>
-                        )}
+                        <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                          <div
+                            className="bg-primary h-2 rounded-full transition-all"
+                            style={{ width: `${file.progress}%` }}
+                          />
+                        </div>
 
-                        {/* Error Message */}
                         {file.error && (
                           <p className="text-xs text-red-600 mb-2">{file.error}</p>
                         )}
 
-                        {/* Remove Button */}
-                        <button
-                          onClick={() => removeBulkFile(file.id)}
-                          disabled={file.loading}
-                          className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Remover
-                        </button>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">{file.progress}%</span>
+                          <button
+                            onClick={() => removeBulkFile(file.id)}
+                            disabled={file.loading}
+                            className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Remover
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -893,11 +1049,11 @@ export function AdminPanel() {
 
         {/* Info */}
         <div className="mt-8 p-6 bg-blue-50 border-2 border-blue-200 rounded-lg">
-          <h3 className="font-semibold text-blue-900 mb-2">💡 Upload com Vercel Blob</h3>
+          <h3 className="font-semibold text-blue-900 mb-2">­ƒÆí Upload com Vercel Blob</h3>
           <p className="text-sm text-blue-800">
-            Seus arquivos são agora enviados diretamente para o Vercel Blob, um serviço gratuito de armazenamento
-            integrado ao Vercel. Os itens do portfólio são persistidos no Vercel Postgres, então aparecem
-            corretamente entre diferentes dispositivos e sessões.
+            Seus arquivos s├úo agora enviados diretamente para o Vercel Blob, um servi├ºo gratuito de armazenamento
+            integrado ao Vercel. Os itens do portf├│lio s├úo persistidos no Vercel Postgres, ent├úo aparecem
+            corretamente entre diferentes dispositivos e sess├Áes.
           </p>
         </div>
       </div>

@@ -7,7 +7,7 @@ import {
   Play,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getPortfolioMediaPreviewSrc,
@@ -17,6 +17,7 @@ import {
 import { usePortfolioItems } from "../hooks/usePortfolioItems";
 
 const ITEMS_PER_PAGE = 6;
+const SWIPE_THRESHOLD = 50;
 
 const mediaKindLabelMap: Record<PortfolioItem["media"]["kind"], string> = {
   image: "Imagem",
@@ -29,6 +30,10 @@ export function Portfolio() {
   const [activeCategory, setActiveCategory] = useState<string>("Todas");
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
   const [activePage, setActivePage] = useState<number>(1);
+  const galleryTouchStartX = useRef<number | null>(null);
+  const galleryTouchEndX = useRef<number | null>(null);
+  const modalTouchStartX = useRef<number | null>(null);
+  const modalTouchEndX = useRef<number | null>(null);
 
   const categories = useMemo(() => {
     const itemCategories = Array.from(
@@ -113,6 +118,60 @@ export function Portfolio() {
 
   const handleNextPage = () => {
     setActivePage((currentPage) => Math.min(totalPages, currentPage + 1));
+  };
+
+  const handleGalleryTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    galleryTouchStartX.current = e.touches[0].clientX;
+    galleryTouchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleGalleryTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    galleryTouchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleGalleryTouchEnd = () => {
+    if (
+      galleryTouchStartX.current === null ||
+      galleryTouchEndX.current === null ||
+      filteredItems.length <= ITEMS_PER_PAGE
+    ) {
+      return;
+    }
+
+    const delta = galleryTouchStartX.current - galleryTouchEndX.current;
+    if (delta > SWIPE_THRESHOLD) {
+      handleNextPage();
+    } else if (delta < -SWIPE_THRESHOLD) {
+      handlePreviousPage();
+    }
+
+    galleryTouchStartX.current = null;
+    galleryTouchEndX.current = null;
+  };
+
+  const handleModalTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    modalTouchStartX.current = e.touches[0].clientX;
+    modalTouchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleModalTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    modalTouchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleModalTouchEnd = () => {
+    if (modalTouchStartX.current === null || modalTouchEndX.current === null) {
+      return;
+    }
+
+    const delta = modalTouchStartX.current - modalTouchEndX.current;
+    if (delta > SWIPE_THRESHOLD) {
+      handleNextItem();
+    } else if (delta < -SWIPE_THRESHOLD) {
+      handlePreviousItem();
+    }
+
+    modalTouchStartX.current = null;
+    modalTouchEndX.current = null;
   };
 
   useEffect(() => {
@@ -268,7 +327,12 @@ export function Portfolio() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div
+          onTouchStart={handleGalleryTouchStart}
+          onTouchMove={handleGalleryTouchMove}
+          onTouchEnd={handleGalleryTouchEnd}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+        >
           {paginatedItems.map((project, index) => {
             const absoluteItemIndex = (activePage - 1) * ITEMS_PER_PAGE + index;
 
@@ -366,6 +430,12 @@ export function Portfolio() {
           </div>
         )}
 
+        {filteredItems.length > ITEMS_PER_PAGE && (
+          <p className="mt-4 text-center text-xs text-muted-foreground md:hidden">
+            Deslize para os lados para trocar de página
+          </p>
+        )}
+
         {activeItem && (
           <div
             className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
@@ -394,7 +464,13 @@ export function Portfolio() {
               <ChevronLeft size={22} />
             </button>
 
-            <div className="w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="w-full max-w-5xl"
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={handleModalTouchStart}
+              onTouchMove={handleModalTouchMove}
+              onTouchEnd={handleModalTouchEnd}
+            >
               {renderModalMedia(activeItem)}
 
               <div className="mt-4 text-center text-white">
@@ -422,6 +498,9 @@ export function Portfolio() {
                 </p>
                 <p className="text-xs text-white/50 mt-2">
                   ⬅️ ➡️ Navegue • ESC Fechar
+                </p>
+                <p className="text-xs text-white/50 mt-1 md:hidden">
+                  Deslize para os lados para trocar de mídia
                 </p>
               </div>
             </div>

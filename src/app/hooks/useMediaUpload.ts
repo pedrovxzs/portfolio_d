@@ -25,13 +25,14 @@ export function useMediaUpload() {
         "image/gif",
         "video/mp4",
         "video/webm",
+        "video/quicktime",
         "audio/mpeg",
         "audio/wav",
       ];
 
       if (!validTypes.includes(file.type)) {
         throw new Error(
-          `Tipo de arquivo não suportado: ${file.type}. Use imagens (JPG, PNG, WebP) ou vídeos (MP4, WebM).`
+          `Tipo de arquivo não suportado: ${file.type}. Use imagens (JPG, PNG, WebP) ou vídeos (MP4, WebM, MOV).`
         );
       }
 
@@ -65,6 +66,7 @@ export function useMediaUpload() {
               body: JSON.stringify({
                 file: base64Data,
                 filename,
+                contentType: file.type,
               }),
             });
 

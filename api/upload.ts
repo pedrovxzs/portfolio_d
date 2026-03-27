@@ -24,7 +24,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { file, filename } = req.body;
+    const { file, filename, contentType } = req.body;
 
     if (!file || !filename) {
       return res
@@ -32,12 +32,21 @@ export default async function handler(req: any, res: any) {
         .json({ error: "Missing file or filename" });
     }
 
+    const normalizedFilename = String(filename).toLowerCase();
+    const inferredContentType =
+      typeof contentType === "string" && contentType.length > 0
+        ? contentType
+        : normalizedFilename.endsWith(".mov")
+          ? "video/quicktime"
+          : undefined;
+
     // Converte base64 para buffer
     const buffer = Buffer.from(file, "base64");
 
     // Faz upload para Vercel Blob
     const blob = await put(filename, buffer, {
       access: "public",
+      contentType: inferredContentType,
     });
 
     return res.status(200).json({
