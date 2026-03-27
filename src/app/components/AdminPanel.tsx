@@ -22,6 +22,7 @@ interface BulkFileUpload {
   loading: boolean;
   error: string | null;
   url: string | null;
+  syncedToPortfolio: boolean;
 }
 
 export function AdminPanel() {
@@ -47,6 +48,19 @@ export function AdminPanel() {
   const [activeTab, setActiveTab] = useState<"portfolio" | "about" | "bulk">("portfolio");
   const { logout } = useAuth();
   const navigate = useNavigate();
+
+  const inferMediaKindFromType = (mimeType: string): PortfolioMedia["kind"] => {
+    if (mimeType.startsWith("video/")) return "video";
+    if (mimeType.startsWith("audio/")) return "audio";
+    return "image";
+  };
+
+  const formatTitleFromFilename = (filename: string): string => {
+    return filename
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[-_]+/g, " ")
+      .trim() || "Item sem título";
+  };
 
   // About Me handlers (defined before useEffect)
   const loadAboutContent = async () => {
@@ -148,6 +162,7 @@ export function AdminPanel() {
       loading: false,
       error: null,
       url: null,
+      syncedToPortfolio: false,
     }));
     setBulkFiles((prev) => [...prev, ...newFiles]);
   };
@@ -228,6 +243,43 @@ export function AdminPanel() {
 
               const result = await uploadResponse.json();
 
+              const mediaKind = inferMediaKindFromType(fileState.file.type);
+              const baseTitle = formatTitleFromFilename(fileState.file.name);
+              const primaryCreate = await addItem({
+                title: baseTitle,
+                category: "Upload em lote",
+                description: "Item criado automaticamente via upload em lote.",
+                media: {
+                  kind: mediaKind,
+                  source: {
+                    type: "url",
+                    src: result.url,
+                  },
+                },
+              });
+
+              let createdInPortfolio = primaryCreate.success;
+              if (!createdInPortfolio) {
+                const fallbackTitle = `${baseTitle} ${Date.now()}`;
+                const fallbackCreate = await addItem({
+                  title: fallbackTitle,
+                  category: "Upload em lote",
+                  description: "Item criado automaticamente via upload em lote.",
+                  media: {
+                    kind: mediaKind,
+                    source: {
+                      type: "url",
+                      src: result.url,
+                    },
+                  },
+                });
+                createdInPortfolio = fallbackCreate.success;
+              }
+
+              if (!createdInPortfolio) {
+                throw new Error("Arquivo enviado, mas falhou ao criar item no portfólio");
+              }
+
               setBulkFiles((prev) =>
                 prev.map((f) =>
                   f.id === fileState.id
@@ -237,6 +289,7 @@ export function AdminPanel() {
                         progress: 100,
                         loading: false,
                         error: null,
+                        syncedToPortfolio: true,
                       }
                     : f
                 )
@@ -751,12 +804,17 @@ export function AdminPanel() {
                           </div>
                           
                           {/* Status Badge */}
-                          {file.url && (
-                            <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
-                              ✓ Enviado
+                          {file.syncedToPortfolio && (
+                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                              Publicado
                             </span>
                           )}
-                          {file.error && (
+                          {!file.syncedToPortfolio && file.url && (
+                            <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                              Só Blob
+                            </span>
+                          )}
+                          {file.error && !file.loading && (
                             <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">
                               ✕ Erro
                             </span>

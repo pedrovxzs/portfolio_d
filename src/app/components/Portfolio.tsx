@@ -35,7 +35,7 @@ export function Portfolio() {
       new Set(portfolioItems.map((item) => item.category)),
     );
     return ["Todas", ...itemCategories];
-  }, []);
+  }, [portfolioItems]);
 
   const filteredItems = useMemo(() => {
     let items = portfolioItems;
@@ -45,7 +45,23 @@ export function Portfolio() {
     }
 
     return items;
-  }, [activeCategory]);
+  }, [activeCategory, portfolioItems]);
+
+  useEffect(() => {
+    if (activeCategory === "Todas") {
+      return;
+    }
+
+    const categoryStillExists = portfolioItems.some(
+      (item) => item.category === activeCategory,
+    );
+
+    if (!categoryStillExists) {
+      setActiveCategory("Todas");
+      setActivePage(1);
+      setActiveItemIndex(null);
+    }
+  }, [activeCategory, portfolioItems]);
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
 
