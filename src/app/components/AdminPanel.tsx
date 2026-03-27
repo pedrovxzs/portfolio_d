@@ -147,6 +147,11 @@ export function AdminPanel() {
       window.clearTimeout(timeout);
 
       if (response.ok) {
+        window.dispatchEvent(
+          new CustomEvent("about-updated", {
+            detail: { content: aboutContent.trim() },
+          })
+        );
         showFeedback("success", "About Me atualizado com sucesso!");
       } else {
         const errorData = (await response.json().catch(() => null)) as { error?: string; details?: string } | null;

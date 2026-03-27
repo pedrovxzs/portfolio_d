@@ -30,17 +30,20 @@ const allowCors = (fn: (req: Request) => Promise<Response>) => {
 };
 
 const handler = async (req: Request): Promise<Response> => {
-  const { POSTGRES_URL } = process.env;
+  const databaseUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
-  if (!POSTGRES_URL) {
+  if (!databaseUrl) {
     return new Response(JSON.stringify({ error: "Database connection failed" }), {
       status: 500,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      },
     });
   }
 
   try {
-    const sql = neon(POSTGRES_URL);
+    const sql = neon(databaseUrl);
 
     await sql`CREATE TABLE IF NOT EXISTS about_content (
       id INTEGER PRIMARY KEY,
@@ -60,14 +63,20 @@ const handler = async (req: Request): Promise<Response> => {
       if (result && result.length > 0) {
         return new Response(JSON.stringify(result[0]), {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          },
         });
       }
 
       // Return empty content if not found
       return new Response(JSON.stringify({ content: "", updated_at: null }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
       });
     }
 
@@ -96,14 +105,20 @@ const handler = async (req: Request): Promise<Response> => {
         }),
         {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          },
         }
       );
     }
 
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      },
     });
   } catch (error: any) {
     console.error("API Error:", error);
@@ -115,7 +130,10 @@ const handler = async (req: Request): Promise<Response> => {
       }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        },
       }
     );
   }

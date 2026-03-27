@@ -7,7 +7,12 @@ export function About() {
   useEffect(() => {
     const loadAboutContent = async () => {
       try {
-        const response = await fetch("/api/about", { cache: "no-store" });
+        const response = await fetch(`/api/about?t=${Date.now()}`, {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        });
         if (!response.ok) {
           return;
         }
@@ -19,7 +24,26 @@ export function About() {
       }
     };
 
+    const handleAboutUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ content?: string }>;
+      if (typeof customEvent.detail?.content === "string") {
+        setAboutContent(customEvent.detail.content.trim());
+      }
+    };
+
+    const handleWindowFocus = () => {
+      void loadAboutContent();
+    };
+
     void loadAboutContent();
+
+    window.addEventListener("about-updated", handleAboutUpdated as EventListener);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      window.removeEventListener("about-updated", handleAboutUpdated as EventListener);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
   }, []);
 
   const paragraphs = useMemo(() => {
