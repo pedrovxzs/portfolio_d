@@ -13,74 +13,59 @@ import {
 
 interface PortfolioContextType {
   items: PortfolioItem[];
+  loading: boolean;
+  error: string | null;
   addItem: (
     item: Omit<PortfolioItem, "id">
-  ) => { success: boolean; id?: number };
-  removeItem: (id: number) => boolean;
-  updateItem: (id: number, item: Partial<PortfolioItem>) => boolean;
+  ) => Promise<{ success: boolean; id?: number }>;
+  removeItem: (id: number) => Promise<boolean>;
+  updateItem: (id: number, item: Partial<PortfolioItem>) => Promise<boolean>;
   getItemById: (id: number) => PortfolioItem | undefined;
-  refreshItems: () => void;
+  refreshItems: () => Promise<void>;
 }
 
 const PortfolioContext = createContext<PortfolioContextType | undefined>(
   undefined
 );
 
-const STORAGE_KEY = "portfolio_items";
-
-function initializeItems(): PortfolioItem[] {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch (error) {
-    console.error("Erro ao carregar items do localStorage:", error);
-  }
-  return defaultItems;
-}
-
 export function PortfolioProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<PortfolioItem[]>(initializeItems);
+  const [items, setItems] = useState<PortfolioItem[]>(defaultItems);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Sincronizar mudanças do localStorage de outras abas/windows
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          const newItems = JSON.parse(e.newValue);
-          setItems(newItems);
-        } catch (error) {
-          console.error("Erro ao sincronizar portfolio:", error);
-        }
+  const refreshItems = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/portfolio-data");
+
+      if (!response.ok) {
+        throw new Error("Falha ao carregar portfolio remoto");
       }
-    };
 
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+      const remoteItems = (await response.json()) as PortfolioItem[];
+      setItems(remoteItems);
+      setError(null);
+    } catch (fetchError) {
+      console.error("Erro ao carregar portfolio remoto:", fetchError);
+      setItems(defaultItems);
+      setError("Usando dados locais temporariamente. Verifique a API.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Persiste items no localStorage sempre que mudam
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items]);
-
-  // Gera novo ID único e válido (idempotência)
-  const generateUniqueId = useCallback((existingItems: PortfolioItem[]) => {
-    const maxId = existingItems.length > 0 ? Math.max(...existingItems.map((i) => i.id)) : 0;
-    return maxId + 1;
-  }, []);
+    void refreshItems();
+  }, [refreshItems]);
 
   // Adiciona item com verificação de idempotência
   const addItem = useCallback(
-    (itemData: Omit<PortfolioItem, "id">): { success: boolean; id?: number } => {
+    async (itemData: Omit<PortfolioItem, "id">): Promise<{ success: boolean; id?: number }> => {
       try {
-        // Valida campos obrigatórios
         if (!itemData.title || !itemData.category || !itemData.media?.source?.src) {
           return { success: false };
         }
 
-        // Verifica se item duplicado (mesmo título e categoria)
         const isDuplicate = items.some(
           (item) => item.title === itemData.title && item.category === itemData.category
         );
@@ -89,7 +74,20 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           return { success: false };
         }
 
-        const newId = generateUniqueId(items);
+        const response = await fetch("/api/portfolio-data", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(itemData),
+        });
+
+        if (!response.ok) {
+          return { success: false };
+        }
+
+        const created = await response.json();
+        const newId = created.id as number;
         const newItem: PortfolioItem = {
           ...itemData,
           id: newId,
@@ -102,14 +100,21 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         return { success: false };
       }
     },
-    [items, generateUniqueId]
+    [items]
   );
 
-  // Remove item com validação
-  const removeItem = useCallback((id: number): boolean => {
+  const removeItem = useCallback(async (id: number): Promise<boolean> => {
     try {
       const exists = items.some((item) => item.id === id);
       if (!exists) {
+        return false;
+      }
+
+      const response = await fetch(`/api/portfolio-data?id=${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
         return false;
       }
 
@@ -121,12 +126,23 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     }
   }, [items]);
 
-  // Atualiza item existente
   const updateItem = useCallback(
-    (id: number, updates: Partial<PortfolioItem>): boolean => {
+    async (id: number, updates: Partial<PortfolioItem>): Promise<boolean> => {
       try {
         const itemExists = items.some((item) => item.id === id);
         if (!itemExists) {
+          return false;
+        }
+
+        const response = await fetch("/api/portfolio-data", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ id, updates }),
+        });
+
+        if (!response.ok) {
           return false;
         }
 
@@ -144,7 +160,6 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     [items]
   );
 
-  // Busca item por ID
   const getItemById = useCallback(
     (id: number): PortfolioItem | undefined => {
       return items.find((item) => item.id === id);
@@ -152,14 +167,10 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
     [items]
   );
 
-  // Força refresh dos items (útil para sincronização manual)
-  const refreshItems = useCallback(() => {
-    const freshItems = initializeItems();
-    setItems(freshItems);
-  }, []);
-
   const value: PortfolioContextType = {
     items,
+    loading,
+    error,
     addItem,
     removeItem,
     updateItem,

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { LogOut, Plus, Trash2 } from "lucide-react";
+import { LogOut, Plus, Trash2, Upload, Check, AlertCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { usePortfolioData } from "../hooks/usePortfolioData";
+import { useMediaUpload } from "../hooks/useMediaUpload";
 import { type PortfolioMedia } from "../data/portfolioItems";
 
 interface FormData {
@@ -11,16 +12,19 @@ interface FormData {
   description: string;
   mediaUrl: string;
   mediaKind: PortfolioMedia["kind"];
+  mediaFile: File | null;
 }
 
 export function AdminPanel() {
-  const { items, addItem, removeItem } = usePortfolioData();
+  const { items, loading, error, addItem, removeItem } = usePortfolioData();
+  const { uploadFile, loading: uploading, error: uploadError, progress } = useMediaUpload();
   const [formData, setFormData] = useState<FormData>({
     title: "",
     category: "",
     description: "",
     mediaUrl: "",
     mediaKind: "image",
+    mediaFile: null,
   });
   const [showForm, setShowForm] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<{
@@ -36,14 +40,39 @@ export function AdminPanel() {
     setTimeout(() => setFeedbackMessage(null), 3000);
   };
 
-  const handleAddItem = (e: React.FormEvent) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setFormData({ ...formData, mediaFile: file });
+      showFeedback("success", "Fazendo upload do arquivo...");
+      
+      const uploadedUrl = await uploadFile(file);
+      if (!uploadedUrl) {
+        throw new Error("Upload não retornou URL válida");
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        mediaUrl: uploadedUrl,
+        mediaFile: null, // Limpa após sucesso
+      }));
+      showFeedback("success", "Arquivo enviado com sucesso!");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro no upload";
+      showFeedback("error", message);
+    }
+  };
+
+  const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.category || !formData.mediaUrl) {
       showFeedback("error", "Preencha todos os campos obrigatórios!");
       return;
     }
 
-    const result = addItem({
+    const result = await addItem({
       title: formData.title,
       category: formData.category,
       description: formData.description,
@@ -63,6 +92,7 @@ export function AdminPanel() {
         description: "",
         mediaUrl: "",
         mediaKind: "image",
+        mediaFile: null,
       });
       setShowForm(false);
       showFeedback("success", "Item adicionado com sucesso!");
@@ -71,9 +101,9 @@ export function AdminPanel() {
     }
   };
 
-  const handleDeleteItem = (id: number) => {
+  const handleDeleteItem = async (id: number) => {
     if (confirm("Tem certeza que deseja deletar este item?")) {
-      const success = removeItem(id);
+      const success = await removeItem(id);
       if (success) {
         showFeedback("success", "Item removido com sucesso!");
       } else {
@@ -119,6 +149,12 @@ export function AdminPanel() {
             Sair
           </button>
         </div>
+
+        {error && (
+          <div className="mb-6 p-4 rounded-lg bg-yellow-100 border border-yellow-400 text-yellow-800">
+            {error}
+          </div>
+        )}
 
         {/* Botão Adicionar */}
         <div className="mb-8">
@@ -191,17 +227,38 @@ export function AdminPanel() {
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    URL da Mídia
+                    Arquivo de Mídia (Imagem/Vídeo)
                   </label>
-                  <input
-                    type="url"
-                    value={formData.mediaUrl}
-                    onChange={(e) =>
-                      setFormData({ ...formData, mediaUrl: e.target.value })
-                    }
-                    placeholder="https://..."
-                    className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary"
-                  />
+                  <div className="relative">
+                    <input
+                      type="file"
+                      onChange={handleFileChange}
+                      accept="image/*,video/*"
+                      disabled={uploading}
+                      className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-primary cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                    />
+                  </div>
+                  {uploading && (
+                    <div className="mt-2 text-sm text-blue-600 flex items-center gap-2">
+                      <Upload size={14} className="animate-spin" />
+                      Enviando... {progress}%
+                    </div>
+                  )}
+                  {uploadError && (
+                    <div className="mt-2 text-sm text-red-600 flex items-center gap-2">
+                      <AlertCircle size={14} />
+                      {uploadError}
+                    </div>
+                  )}
+                  {formData.mediaUrl && (
+                    <div className="mt-2 text-sm text-green-600 flex items-center gap-2">
+                      <Check size={14} />
+                      Arquivo enviado com sucesso!
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Formatos suportados: JPG, PNG, WebP (imagens) | MP4, WebM (vídeos) | Máximo 100MB
+                  </p>
                 </div>
               </div>
 
@@ -234,7 +291,7 @@ export function AdminPanel() {
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-2xl font-bold text-foreground">
-              Items do Portfolio ({items.length})
+              Items do Portfolio {loading ? "(carregando...)" : `(${items.length})`}
             </h2>
           </div>
 
@@ -281,11 +338,11 @@ export function AdminPanel() {
 
         {/* Info */}
         <div className="mt-8 p-6 bg-blue-50 border-2 border-blue-200 rounded-lg">
-          <h3 className="font-semibold text-blue-900 mb-2">💡 Dica Importante</h3>
+          <h3 className="font-semibold text-blue-900 mb-2">💡 Upload com Vercel Blob</h3>
           <p className="text-sm text-blue-800">
-            Os items são salvos em localStorage e aparecerão no seu portfolio.
-            Para adicionar imagens locais, você precisará fazer upload em um
-            serviço como Imgur ou similar e colar a URL aqui.
+            Seus arquivos são agora enviados diretamente para o Vercel Blob, um serviço gratuito de armazenamento
+            integrado ao Vercel. Os itens do portfólio são persistidos no Vercel Postgres, então aparecem
+            corretamente entre diferentes dispositivos e sessões.
           </p>
         </div>
       </div>
