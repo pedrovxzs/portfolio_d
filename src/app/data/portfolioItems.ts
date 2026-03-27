@@ -4,6 +4,7 @@ export interface PortfolioItem {
   category: string;
   media: PortfolioMedia;
   description: string;
+  technologies?: string[];
 }
 
 export interface PortfolioAssetSource {
