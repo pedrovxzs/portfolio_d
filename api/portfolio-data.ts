@@ -1,5 +1,13 @@
-import { sql } from "@vercel/postgres";
-import { portfolioItems as defaultItems } from "../src/app/data/portfolioItems";
+import { neon } from "@neondatabase/serverless";
+import { portfolioItems as defaultItems } from "../src/app/data/portfolioItems.js";
+
+const databaseUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error("Missing POSTGRES_URL or DATABASE_URL environment variable");
+}
+
+const sql = neon(databaseUrl);
 
 function setCors(res: any) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -44,7 +52,7 @@ export default async function handler(req: any, res: any) {
     if (req.method === "GET") {
       res.setHeader("Cache-Control", "no-store");
 
-      let { rows } = await sql`
+      let rows = await sql`
         SELECT id, title, category, description, technologies, media
         FROM portfolio_items
         ORDER BY id ASC
@@ -70,7 +78,7 @@ export default async function handler(req: any, res: any) {
           FROM portfolio_items
           ORDER BY id ASC
         `;
-        rows = seeded.rows;
+        rows = seeded;
       }
 
       const normalizedRows = rows.map((row) => ({
@@ -92,7 +100,7 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: "Invalid portfolio item payload" });
       }
 
-      const { rows } = await sql`
+      const insertedRows = await sql`
         INSERT INTO portfolio_items (title, category, description, technologies, media)
         VALUES (
           ${item.title},
@@ -104,7 +112,7 @@ export default async function handler(req: any, res: any) {
         RETURNING id
       `;
 
-      return res.status(201).json({ success: true, id: rows[0].id });
+      return res.status(201).json({ success: true, id: insertedRows[0].id });
     }
 
     if (req.method === "PUT") {
@@ -120,11 +128,11 @@ export default async function handler(req: any, res: any) {
         WHERE id = ${id}
       `;
 
-      if (current.rowCount === 0) {
+      if (current.length === 0) {
         return res.status(404).json({ error: "Item not found" });
       }
 
-      const currentItem = current.rows[0];
+      const currentItem = current[0];
       const mergedMedia = updates.media ?? currentItem.media;
       const mergedTechnologies = updates.technologies ?? currentItem.technologies;
 
@@ -149,12 +157,13 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: "Invalid id" });
       }
 
-      const result = await sql`
+      const deletedRows = await sql`
         DELETE FROM portfolio_items
         WHERE id = ${id}
+        RETURNING id
       `;
 
-      if (result.rowCount === 0) {
+      if (deletedRows.length === 0) {
         return res.status(404).json({ error: "Item not found" });
       }
 
