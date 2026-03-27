@@ -36,7 +36,9 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
   const refreshItems = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/portfolio-data");
+      const response = await fetch("/api/portfolio-data", {
+        cache: "no-store",
+      });
 
       if (!response.ok) {
         throw new Error("Falha ao carregar portfolio remoto");
@@ -56,6 +58,23 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshItems();
+  }, [refreshItems]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshItems();
+    }, 10000);
+
+    const handleFocus = () => {
+      void refreshItems();
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [refreshItems]);
 
   // Adiciona item com verificação de idempotência
@@ -88,19 +107,15 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
 
         const created = await response.json();
         const newId = created.id as number;
-        const newItem: PortfolioItem = {
-          ...itemData,
-          id: newId,
-        };
 
-        setItems((prevItems) => [...prevItems, newItem]);
+        await refreshItems();
         return { success: true, id: newId };
       } catch (error) {
         console.error("Erro ao adicionar item:", error);
         return { success: false };
       }
     },
-    [items]
+    [items, refreshItems]
   );
 
   const removeItem = useCallback(async (id: number): Promise<boolean> => {
@@ -118,13 +133,13 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      setItems((prevItems) => prevItems.filter((item) => item.id !== id));
+      await refreshItems();
       return true;
     } catch (error) {
       console.error("Erro ao remover item:", error);
       return false;
     }
-  }, [items]);
+  }, [items, refreshItems]);
 
   const updateItem = useCallback(
     async (id: number, updates: Partial<PortfolioItem>): Promise<boolean> => {
@@ -146,18 +161,14 @@ export function PortfolioProvider({ children }: { children: ReactNode }) {
           return false;
         }
 
-        setItems((prevItems) =>
-          prevItems.map((item) =>
-            item.id === id ? { ...item, ...updates, id } : item
-          )
-        );
+        await refreshItems();
         return true;
       } catch (error) {
         console.error("Erro ao atualizar item:", error);
         return false;
       }
     },
-    [items]
+    [items, refreshItems]
   );
 
   const getItemById = useCallback(

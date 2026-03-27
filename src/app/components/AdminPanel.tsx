@@ -16,7 +16,7 @@ interface FormData {
 }
 
 export function AdminPanel() {
-  const { items, loading, error, addItem, removeItem } = usePortfolioData();
+  const { items, loading, error, addItem, removeItem, updateItem } = usePortfolioData();
   const { uploadFile, loading: uploading, error: uploadError, progress } = useMediaUpload();
   const [formData, setFormData] = useState<FormData>({
     title: "",
@@ -27,12 +27,61 @@ export function AdminPanel() {
     mediaFile: null,
   });
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [technologiesInput, setTechnologiesInput] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
   const { logout } = useAuth();
   const navigate = useNavigate();
+
+  const parseTechnologies = (value: string): string[] => {
+    return value
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setTechnologiesInput("");
+    setFormData({
+      title: "",
+      category: "",
+      description: "",
+      mediaUrl: "",
+      mediaKind: "image",
+      mediaFile: null,
+    });
+  };
+
+  const openCreateForm = () => {
+    resetForm();
+    setShowForm(true);
+  };
+
+  const openEditForm = (id: number) => {
+    const item = items.find((portfolioItem) => portfolioItem.id === id);
+    if (!item) return;
+
+    setEditingId(id);
+    setTechnologiesInput((item.technologies ?? []).join(", "));
+    setFormData({
+      title: item.title,
+      category: item.category,
+      description: item.description,
+      mediaUrl: item.media.source.src,
+      mediaKind: item.media.kind,
+      mediaFile: null,
+    });
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    resetForm();
+    setShowForm(false);
+  };
 
   // Limpa mensagem de feedback após 3 segundos
   const showFeedback = (type: "success" | "error", text: string) => {
@@ -76,6 +125,7 @@ export function AdminPanel() {
       title: formData.title,
       category: formData.category,
       description: formData.description,
+      technologies: parseTechnologies(technologiesInput),
       media: {
         kind: formData.mediaKind,
         source: {
@@ -86,19 +136,47 @@ export function AdminPanel() {
     });
 
     if (result.success) {
-      setFormData({
-        title: "",
-        category: "",
-        description: "",
-        mediaUrl: "",
-        mediaKind: "image",
-        mediaFile: null,
-      });
-      setShowForm(false);
+      closeForm();
       showFeedback("success", "Item adicionado com sucesso!");
     } else {
       showFeedback("error", "Erro ao adicionar item. Verifique os dados e tente novamente.");
     }
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (editingId === null) {
+      showFeedback("error", "Selecione um item para edição.");
+      return;
+    }
+
+    if (!formData.title || !formData.category || !formData.mediaUrl) {
+      showFeedback("error", "Preencha todos os campos obrigatórios!");
+      return;
+    }
+
+    const success = await updateItem(editingId, {
+      title: formData.title,
+      category: formData.category,
+      description: formData.description,
+      technologies: parseTechnologies(technologiesInput),
+      media: {
+        kind: formData.mediaKind,
+        source: {
+          type: "url",
+          src: formData.mediaUrl,
+        },
+      },
+    });
+
+    if (success) {
+      closeForm();
+      showFeedback("success", "Item atualizado com sucesso!");
+      return;
+    }
+
+    showFeedback("error", "Erro ao atualizar item.");
   };
 
   const handleDeleteItem = async (id: number) => {
@@ -159,7 +237,13 @@ export function AdminPanel() {
         {/* Botão Adicionar */}
         <div className="mb-8">
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (showForm) {
+                closeForm();
+              } else {
+                openCreateForm();
+              }
+            }}
             className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-semibold"
           >
             <Plus size={20} />
@@ -171,9 +255,12 @@ export function AdminPanel() {
         {showForm && (
           <div className="bg-white rounded-2xl p-8 mb-8 shadow-lg">
             <h2 className="text-2xl font-bold text-foreground mb-6">
-              Novo Item
+              {editingId === null ? "Novo Item" : "Editar Item"}
             </h2>
-            <form onSubmit={handleAddItem} className="space-y-4">
+            <form
+              onSubmit={editingId === null ? handleAddItem : handleSaveEdit}
+              className="space-y-4"
+            >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
@@ -277,11 +364,24 @@ export function AdminPanel() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Tecnologias (separadas por vírgula)
+                </label>
+                <input
+                  type="text"
+                  value={technologiesInput}
+                  onChange={(e) => setTechnologiesInput(e.target.value)}
+                  placeholder="Ex: React, TypeScript, Tailwind"
+                  className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary"
+                />
+              </div>
+
               <button
                 type="submit"
                 className="w-full px-4 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
               >
-                Adicionar Item
+                {editingId === null ? "Adicionar Item" : "Salvar Alterações"}
               </button>
             </form>
           </div>
@@ -322,13 +422,33 @@ export function AdminPanel() {
                       <p className="text-sm text-muted-foreground mt-2">
                         {item.description}
                       </p>
+                      {item.technologies && item.technologies.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.technologies.map((tech) => (
+                            <span
+                              key={`${item.id}-${tech}`}
+                              className="inline-block px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs"
+                            >
+                              {tech}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <button
-                      onClick={() => handleDeleteItem(item.id)}
-                      className="ml-4 p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 size={20} />
-                    </button>
+                    <div className="ml-4 flex items-center gap-2">
+                      <button
+                        onClick={() => openEditForm(item.id)}
+                        className="px-3 py-2 text-sm bg-gray-100 text-foreground hover:bg-gray-200 rounded-lg transition-colors"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
