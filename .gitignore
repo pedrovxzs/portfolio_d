@@ -12,6 +12,9 @@ node_modules/
 /dist
 /build
 
+# Local portfolio media (stored in Vercel Blob)
+public/assets/portfolio/
+
 # IDE
 .vscode/
 .idea/
