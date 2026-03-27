@@ -28,7 +28,6 @@ export function AdminPanel() {
   });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [technologiesInput, setTechnologiesInput] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -36,16 +35,8 @@ export function AdminPanel() {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
-  const parseTechnologies = (value: string): string[] => {
-    return value
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-  };
-
   const resetForm = () => {
     setEditingId(null);
-    setTechnologiesInput("");
     setFormData({
       title: "",
       category: "",
@@ -66,7 +57,6 @@ export function AdminPanel() {
     if (!item) return;
 
     setEditingId(id);
-    setTechnologiesInput((item.technologies ?? []).join(", "));
     setFormData({
       title: item.title,
       category: item.category,
@@ -125,7 +115,6 @@ export function AdminPanel() {
       title: formData.title,
       category: formData.category,
       description: formData.description,
-      technologies: parseTechnologies(technologiesInput),
       media: {
         kind: formData.mediaKind,
         source: {
@@ -160,7 +149,6 @@ export function AdminPanel() {
       title: formData.title,
       category: formData.category,
       description: formData.description,
-      technologies: parseTechnologies(technologiesInput),
       media: {
         kind: formData.mediaKind,
         source: {
@@ -180,13 +168,9 @@ export function AdminPanel() {
   };
 
   const handleDeleteItem = async (id: number) => {
-    if (confirm("Tem certeza que deseja deletar este item?")) {
-      const success = await removeItem(id);
-      if (success) {
-        showFeedback("success", "Item removido com sucesso!");
-      } else {
-        showFeedback("error", "Erro ao remover item.");
-      }
+    const success = await removeItem(id);
+    if (!success) {
+      showFeedback("error", "Erro ao remover item.");
     }
   };
 
@@ -364,19 +348,6 @@ export function AdminPanel() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Tecnologias (separadas por vírgula)
-                </label>
-                <input
-                  type="text"
-                  value={technologiesInput}
-                  onChange={(e) => setTechnologiesInput(e.target.value)}
-                  placeholder="Ex: React, TypeScript, Tailwind"
-                  className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-primary"
-                />
-              </div>
-
               <button
                 type="submit"
                 className="w-full px-4 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
@@ -422,18 +393,6 @@ export function AdminPanel() {
                       <p className="text-sm text-muted-foreground mt-2">
                         {item.description}
                       </p>
-                      {item.technologies && item.technologies.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {item.technologies.map((tech) => (
-                            <span
-                              key={`${item.id}-${tech}`}
-                              className="inline-block px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs"
-                            >
-                              {tech}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <div className="ml-4 flex items-center gap-2">
                       <button

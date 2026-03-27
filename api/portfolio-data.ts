@@ -26,15 +26,9 @@ async function ensureTable() {
       title TEXT NOT NULL,
       category TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
-      technologies JSONB NOT NULL DEFAULT '[]'::jsonb,
       media JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `;
-
-  await sql`
-    ALTER TABLE portfolio_items
-    ADD COLUMN IF NOT EXISTS technologies JSONB NOT NULL DEFAULT '[]'::jsonb
   `;
 }
 
@@ -53,7 +47,7 @@ export default async function handler(req: any, res: any) {
       res.setHeader("Cache-Control", "no-store");
 
       let rows = await sql`
-        SELECT id, title, category, description, technologies, media
+        SELECT id, title, category, description, media
         FROM portfolio_items
         ORDER BY id ASC
       `;
@@ -61,20 +55,19 @@ export default async function handler(req: any, res: any) {
       if (rows.length === 0) {
         for (const item of defaultItems) {
           await sql`
-            INSERT INTO portfolio_items (id, title, category, description, technologies, media)
+            INSERT INTO portfolio_items (id, title, category, description, media)
             VALUES (
               ${item.id},
               ${item.title},
               ${item.category},
               ${item.description ?? ""},
-              ${JSON.stringify(item.technologies ?? [])}::jsonb,
               ${JSON.stringify(item.media)}::jsonb
             )
           `;
         }
 
         const seeded = await sql`
-          SELECT id, title, category, description, technologies, media
+          SELECT id, title, category, description, media
           FROM portfolio_items
           ORDER BY id ASC
         `;
@@ -83,10 +76,6 @@ export default async function handler(req: any, res: any) {
 
       const normalizedRows = rows.map((row) => ({
         ...row,
-        technologies:
-          typeof row.technologies === "string"
-            ? JSON.parse(row.technologies)
-            : row.technologies,
         media: typeof row.media === "string" ? JSON.parse(row.media) : row.media,
       }));
 
@@ -101,12 +90,11 @@ export default async function handler(req: any, res: any) {
       }
 
       const insertedRows = await sql`
-        INSERT INTO portfolio_items (title, category, description, technologies, media)
+        INSERT INTO portfolio_items (title, category, description, media)
         VALUES (
           ${item.title},
           ${item.category},
           ${item.description ?? ""},
-          ${JSON.stringify(item.technologies ?? [])}::jsonb,
           ${JSON.stringify(item.media)}::jsonb
         )
         RETURNING id
@@ -123,7 +111,7 @@ export default async function handler(req: any, res: any) {
       }
 
       const current = await sql`
-        SELECT id, title, category, description, technologies, media
+        SELECT id, title, category, description, media
         FROM portfolio_items
         WHERE id = ${id}
       `;
@@ -134,7 +122,6 @@ export default async function handler(req: any, res: any) {
 
       const currentItem = current[0];
       const mergedMedia = updates.media ?? currentItem.media;
-      const mergedTechnologies = updates.technologies ?? currentItem.technologies;
 
       await sql`
         UPDATE portfolio_items
@@ -142,7 +129,6 @@ export default async function handler(req: any, res: any) {
           title = ${updates.title ?? currentItem.title},
           category = ${updates.category ?? currentItem.category},
           description = ${updates.description ?? currentItem.description},
-          technologies = ${JSON.stringify(mergedTechnologies)}::jsonb,
           media = ${JSON.stringify(mergedMedia)}::jsonb
         WHERE id = ${id}
       `;
